@@ -1,0 +1,37 @@
+# .github/workflows/update-filelist.yml
+
+name: Update File List # 工作流的名称
+
+# 1. 触发条件：当代码被推送到 main 分支时运行[reference:5]
+on:
+  push:
+    branches:
+      - main
+
+# 2. 工作流任务
+jobs:
+  update-json:
+    runs-on: ubuntu-latest # 在最新版的 Ubuntu 服务器上运行[reference:6]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate file list JSON
+        run: |
+          # 使用 find 命令找出 files 文件夹下的所有文件（排除目录本身）
+          # 然后用 jq 命令将其格式化为 JSON 数组[reference:7]
+          find files -type f | jq -R -s 'split("\n") | map(select(length > 0))' > filelist.json
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add filelist.json
+          
+          # 检查是否有变更需要提交，若有则提交并推送
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Automatically update filelist.json"
+            git push
+          fi
