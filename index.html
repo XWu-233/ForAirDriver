@@ -3,92 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <title>Files 目录列表</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        ul { list-style: none; padding: 0; }
-        li { padding: 4px 0; }
-        .folder { color: #d4a017; }
-        .file { color: #1e7e34; }
-    </style>
 </head>
 <body>
     <h1>📁 files 目录中的文件</h1>
-    <div id="loading">加载中...</div>
     <ul id="fileList"></ul>
 
     <script>
-        // ====== 请修改以下三处 ======
-        const OWNER = 'XWu-233';
-        const REPO = 'ForAirDriver';
-        const FOLDER_PATH = 'files'; // 要读取的文件夹路径（仓库根目录下的相对路径）
-        // ==============================
-
-        const apiUrl = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FOLDER_PATH}`;
-
-        async function fetchDirectory() {
+        async function fetchFileList() {
             const listEl = document.getElementById('fileList');
-            const loadingEl = document.getElementById('loading');
-
             try {
-                const response = await fetch(apiUrl);
-                
+                // 直接请求同目录下的 filelist.json 文件
+                const response = await fetch('filelist.json');
                 if (!response.ok) {
-                    // 如果返回 404，可能文件夹不存在或仓库私有（公开仓库无需 token）
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
+                const files = await response.json();
 
-                const data = await response.json();
-
-                // GitHub API 返回数组，每个元素是文件/目录信息
-                if (!Array.isArray(data)) {
-                    // 可能返回单个文件对象（如果路径指向文件）
-                    throw new Error('路径不是目录或内容为空');
-                }
-
-                loadingEl.style.display = 'none';
-
-                if (data.length === 0) {
+                if (files.length === 0) {
                     listEl.innerHTML = '<li>文件夹为空</li>';
                     return;
                 }
 
-                // 排序：目录在前，文件在后
-                data.sort((a, b) => {
-                    if (a.type === 'dir' && b.type !== 'dir') return -1;
-                    if (a.type !== 'dir' && b.type === 'dir') return 1;
-                    return a.name.localeCompare(b.name);
-                });
-
-                // 渲染列表
-                data.forEach(item => {
+                // 清空并渲染文件列表
+                listEl.innerHTML = '';
+                files.forEach(file => {
                     const li = document.createElement('li');
-                    const icon = item.type === 'dir' ? '📂' : '📄';
-                    const className = item.type === 'dir' ? 'folder' : 'file';
-                    
-                    // 构建可点击的链接
-                    let link;
-                    if (item.type === 'dir') {
-                        // 目录链接（可展开子目录，但需额外处理）
-                        link = `#`; // 简单起见，只显示名称
-                    } else {
-                        // 文件链接：指向原始内容（raw）或页面
-                        link = item.download_url || item.html_url;
-                    }
-
-                    li.innerHTML = `
-                        <span class="${className}">${icon} ${item.name}</span>
-                        ${link ? ` <a href="${link}" target="_blank">🔗 查看</a>` : ''}
-                    `;
+                    li.textContent = `📄 ${file}`; // file 的格式如 "files/a.txt"
                     listEl.appendChild(li);
                 });
 
             } catch (error) {
-                loadingEl.textContent = `❌ 加载失败：${error.message}`;
-                console.error('API 请求错误：', error);
+                listEl.innerHTML = `<li>❌ 加载失败：${error.message}</li>`;
+                console.error('加载 filelist.json 失败：', error);
             }
         }
 
-        fetchDirectory();
+        fetchFileList();
     </script>
 </body>
 </html>
