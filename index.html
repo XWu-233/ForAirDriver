@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云盘文件</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            max-width: 680px;
+            margin: 40px auto;
+            padding: 0 20px;
+            background: #f9fafb;
+            color: #1f2937;
+            line-height: 1.6;
+        }
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.4em;
+        }
+        .subtitle {
+            color: #6b7280;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+        .file-list {
+            list-style: none;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .file-item {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            transition: box-shadow 0.15s;
+        }
+        .file-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .file-name {
+            font-weight: 500;
+            word-break: break-all;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .file-name .icon {
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+        .file-size {
+            color: #9ca3af;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            margin-left: auto;
+            margin-right: 12px;
+        }
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 14px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-decoration: none;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s;
+        }
+        .download-btn:hover {
+            background: #1d4ed8;
+        }
+        .error {
+            background: #fef2f2;
+            color: #b91c1c;
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid #ef4444;
+            font-size: 0.9rem;
+        }
+        .loading {
+            color: #6b7280;
+            font-style: italic;
+            padding: 20px 0;
+        }
+        .empty {
+            text-align: center;
+            color: #6b7280;
+            padding: 40px 0;
+        }
+        .footer-note {
+            margin-top: 2.5rem;
+            font-size: 0.8rem;
+            color: #9ca3af;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 1rem;
+        }
+        @media (max-width: 500px) {
+            .file-item {
+                flex-wrap: wrap;
+            }
+            .file-size {
+                order: 3;
+                width: 100%;
+                margin-left: 0;
+                margin-right: 0;
+                margin-top: 4px;
+            }
+            .download-btn {
+                margin-left: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>
+        <span>📁</span> 云盘文件
+    </h1>
+    <p class="subtitle" id="repoInfo">加载中…</p>
+
+    <div id="listContainer">
+        <div class="loading">正在读取文件列表…</div>
+    </div>
+
+    <div class="footer-note">
+        文件存放在仓库的 <code>/files</code> 目录下
+    </div>
+
+    <script>
+        (function() {
+            // ────────── 自动检测仓库信息 ──────────
+            // 如果自动检测失败，请手动修改下面两个变量
+            let MANUAL_OWNER = '';
+            let MANUAL_REPO = '';
+
+            function detectRepoInfo() {
+                const host = window.location.hostname;
+                const path = window.location.pathname.replace(/\/$/, '');
+
+                // GitHub Pages 的两种模式
+                if (host.endsWith('.github.io')) {
+                    const username = host.replace('.github.io', '');
+                    // 项目站点: username.github.io/repo
+                    const pathParts = path.split('/').filter(p => p && p !== 'index.html');
+                    if (pathParts.length > 0) {
+                        return { owner: username, repo: pathParts[0] };
+                    }
+                    // 用户站点: username.github.io (仓库名即 username.github.io)
+                    return { owner: username, repo: `${username}.github.io` };
+                }
+
+                // 自定义域名无法自动推断，使用手动配置
+                if (MANUAL_OWNER && MANUAL_REPO) {
+                    return { owner: MANUAL_OWNER, repo: MANUAL_REPO };
+                }
+
+                return null;
+            }
+
+            const repoInfo = detectRepoInfo();
+            const repoDisplay = document.getElementById('repoInfo');
+            const listContainer = document.getElementById('listContainer');
+
+            if (!repoInfo) {
+                listContainer.innerHTML = `
+                    <div class="error">
+                        ⚠️ 无法自动识别仓库信息。<br>
+                        请打开此 HTML 文件，在 <code>&lt;script&gt;</code> 标签顶部设置 <code>MANUAL_OWNER</code> 和 <code>MANUAL_REPO</code> 变量。
+                    </div>`;
+                return;
+            }
+
+            repoDisplay.textContent = `${repoInfo.owner} / ${repoInfo.repo}`;
+
+            // ────────── 获取文件列表 ──────────
+            const API_URL = `https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/contents/files`;
+
+            async function loadFiles() {
+                try {
+                    const response = await fetch(API_URL, {
+                        headers: {
+                            'Accept': 'application/vnd.github.v3+json',
+                        }
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            throw new Error('仓库内未找到 <code>/files</code> 文件夹，请确认目录是否存在。');
+                        }
+                        if (response.status === 403) {
+                            throw new Error('API 访问受限（可能是速率限制或私有仓库）。公开仓库每小时可请求 60 次。');
+                        }
+                        throw new Error(`请求失败 (${response.status})`);
+                    }
+
+                    const data = await response.json();
+                    if (!Array.isArray(data)) {
+                        throw new Error('返回数据格式异常');
+                    }
+
+                    renderFileList(data);
+                } catch (err) {
+                    listContainer.innerHTML = `<div class="error">❌ ${err.message}</div>`;
+                }
+            }
+
+            function formatSize(bytes) {
+                if (bytes === 0 || bytes == null) return '—';
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+                return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+            }
+
+            function getFileIcon(name) {
+                const ext = name.split('.').pop().toLowerCase();
+                const map = {
+                    jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️', svg: '🖼️', webp: '🖼️',
+                    mp4: '🎬', mov: '🎬', avi: '🎬', mkv: '🎬',
+                    mp3: '🎵', wav: '🎵', flac: '🎵', aac: '🎵', ogg: '🎵',
+                    pdf: '📄', doc: '📄', docx: '📄', txt: '📄', md: '📄',
+                    zip: '📦', rar: '📦', '7z': '📦', tar: '📦', gz: '📦',
+                    js: '📜', py: '📜', html: '📜', css: '📜', java: '📜',
+                };
+                return map[ext] || '📎';
+            }
+
+            function renderFileList(files) {
+                if (files.length === 0) {
+                    listContainer.innerHTML = '<div class="empty">📭 /files 文件夹是空的</div>';
+                    return;
+                }
+
+                // 只显示文件，忽略子目录（若存在）
+                const fileItems = files.filter(f => f.type === 'file');
+
+                if (fileItems.length === 0) {
+                    listContainer.innerHTML = '<div class="empty">📂 /files 下没有文件</div>';
+                    return;
+                }
+
+                let html = '<ul class="file-list">';
+                fileItems.forEach(file => {
+                    const icon = getFileIcon(file.name);
+                    const size = formatSize(file.size);
+                    const downloadUrl = file.download_url;
+                    html += `
+                    <li class="file-item">
+                        <span class="file-name">
+                            <span class="icon">${icon}</span>
+                            <span>${escapeHtml(file.name)}</span>
+                        </span>
+                        <span class="file-size">${size}</span>
+                        <a class="download-btn" href="${escapeHtml(downloadUrl)}" download>
+                            ⬇️ 下载
+                        </a>
+                    </li>`;
+                });
+                html += '</ul>';
+                listContainer.innerHTML = html;
+            }
+
+            function escapeHtml(str) {
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            loadFiles();
+        })();
+    </script>
+</body>
+</html>
